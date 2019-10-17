@@ -9,19 +9,26 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class NIOEchoServer {
+
+    private static final int BUF_SIZE = 10;
+
+    private final Map<String, ArrayDeque<Object>> appData = new HashMap<>();
+    private final Map<String, ClientStatus> clientStatusMap = new HashMap<>();
 
     public static void main(String[] args) {
         int port = 9090;
@@ -44,27 +51,25 @@ public class NIOEchoServer {
             var selector = Selector.open();
             final var key_a = channel.register(selector, SelectionKey.OP_ACCEPT);
             while (true) {
-                System.out.println("SSS call select()");
+                System.out.println("\nCalling select()");
                 selector.select();
                 Set<SelectionKey> keys = selector.selectedKeys();
-                for (var key : keys) {
-                    System.out.println("SSSSS key.interestOps=" + key.interestOps());
+                Iterator iter = keys.iterator();
+                while (iter.hasNext()) {
+                    SelectionKey key = (SelectionKey) iter.next();
+                    iter.remove();
+                    System.out.println("  key: " + key.interestOps() + ", " + key.readyOps());
                     if (key.isAcceptable()) {
-                        System.out.println("XXXXXX isAcceptable");
-                        if (key == key_a) {
-                            System.out.println("SSAAAME");
-                        } else {
-                            System.out.println("NNOOOOOOOOO");
-                        }
-                        handleAccept(key, selector);
+                        System.out.println("  Calling handleAcceptable()");
+                        handleAcceptable(key, selector);
                     }
                     if (key.isReadable()) {
-                        System.out.println("XXXXXX isReadable");
-                        handleRead(key);
+                        System.out.println("  Calling handleReadable()");
+                        handleReadable(key);
                     }
-                    if (key.isWritable()) {
-                        System.out.println("XXXXXX isWritable");
-                        handleWrite(key);
+                    if (key.isValid() && key.isWritable()) {
+                        System.out.println("  Calling handleWritable()");
+                        handleWritable(key);
                     }
                 }
             }
@@ -77,74 +82,132 @@ public class NIOEchoServer {
         System.out.println("Bye!");
     }
 
-    private void handleAccept(SelectionKey key, Selector selector) {
+    private void handleAcceptable(SelectionKey key, Selector selector) {
         var serverSocketChannel = (ServerSocketChannel) key.channel();
         try {
             var ch = serverSocketChannel.accept();
             if (ch == null) {
-                System.out.println("XXX accept() returned null!");
+                System.out.println("  accept: no connection is available.");
                 return;
             }
-            System.out.println("XXX accepted connection!");
+
+            System.out.println("  accept: connection: " + ch.getRemoteAddress());
             ch.configureBlocking(false);
-            ch.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(1024));
+            ch.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUF_SIZE));
         } catch (IOException ioe) {
-            System.out.println("Error in accept");
-            ioe.printStackTrace();
+            handleError(ioe);
         }
     }
 
-    private void handleRead(SelectionKey key) {
-        if ((key.interestOps() & SelectionKey.OP_READ) == 0) {
-            return;
-        }
+    private void handleReadable(SelectionKey key) {
         var ch = (SocketChannel) key.channel();
         var buf = (ByteBuffer) key.attachment();
         try {
+            System.out.println("  read: reading from ch..");
             int size = ch.read(buf);
-            if (size < 0) {
-                // closed
-                System.out.println("Connection has ben closed!");
-                ch.close();
+            if (size <= 0) {
+                if (size < 0) {
+                    // closed
+                    System.out.println("  read: connection has ben closed!");
+                    ch.close();
+                } else {
+                    System.out.println("  read: no data found.");
+                }
                 return;
             }
-            System.out.println("RRRRR size = " + size);
+            System.out.println("  read: size = " + size);
             var bytes = new byte[size];
             buf.flip().get(bytes);
             buf.clear();
-            buf.put(processMessage(bytes));
+
+            processMessage(bytes, ch.getRemoteAddress());
             key.interestOps(SelectionKey.OP_WRITE);
         } catch (IOException ioe) {
             handleError(ioe);
-        }3
+        }
     }
 
-    private void handleWrite(SelectionKey key) {
+    private void handleWritable(SelectionKey key) {
         var ch = (SocketChannel) key.channel();
-        var buf = ((ByteBuffer) key.attachment()).flip();
+        var buf = ((ByteBuffer) key.attachment());
+
         try {
-            ch.write(buf);
-            buf.compact();
-            if (buf.position() > 0) {
-                // Data is remaining in buf.
-                key.interestOps(SelectionKey.OP_WRITE);
-            } else {
-                buf.clear();
-                key.interestOps(SelectionKey.OP_READ);
+
+            while (true) {
+                if (buf.position() == 0) {
+                    var queue = appData.get(ch.getRemoteAddress().toString());
+                    byte[] dataOut = (byte[]) queue.poll();
+                    if (dataOut == null) {
+                        // No data
+                        key.interestOps(SelectionKey.OP_READ);
+                        return;
+                    }
+
+                    buf.put(dataOut);
+                }
+                buf.flip();
+                System.out.println("  write: writing to ch..");
+                int writeCount = ch.write(buf);
+                System.out.println("  write: writeCount=" + writeCount);
+                buf.compact();
+                if (buf.position() > 0) {
+                    // Data is remaining in buf.
+                    System.out.println("  write: data is remaining in buf.");
+                    key.interestOps(SelectionKey.OP_WRITE);
+                    return;
+                } else {
+                    buf.clear();
+                    //key.interestOps(SelectionKey.OP_READ);
+                }
             }
         } catch (IOException ioe) {
             handleError(ioe);
         }
     }
 
-    private byte[] processMessage(byte[] bytes) {
-        String s = new String(bytes, StandardCharsets.UTF_8);
-        if (s.charAt(s.length() - 1) == '\n') {
-            s = s.substring(0, s.length() - 1);
+    private void processMessage(byte[] bytesIn, SocketAddress addr) {
+        Queue<Object> queue = getQueue(addr);
+        ClientStatus clientStatus = getStatus(addr);
+        String s = new String(bytesIn, StandardCharsets.UTF_8);
+        System.out.println("  Processing data: " + s + ", " + clientStatus);
+
+        if (s.equals("\n") && clientStatus == ClientStatus.WRITING) {
+            System.out.println("XXXXX only newline!");
+            putResponseToQueue(" is nio!\n", queue);
+            updateStatus(addr, ClientStatus.DONE);
+            return;
         }
-        System.out.println("PPPPPPP s = " + s);
-        String t = s + " is nio\n";
-        return t.getBytes(StandardCharsets.UTF_8);
+
+        boolean endWithNewline = s.endsWith("\n");
+        System.out.println("  pm: endWithNewLine=" + endWithNewline);
+
+        String[] tokens = s.split("\n");
+        for (int i=0; i<tokens.length; i++) {
+
+            String token = tokens[i];
+            if (token.isEmpty()) {
+                continue;
+            }
+            if (i < tokens.length  -1 || endWithNewline) {
+                token = token + " is nio!\n";
+            }
+            System.out.println("  pm: token=" + token);
+            putResponseToQueue(token, queue);
+        }
+        updateStatus(addr, endWithNewline ? ClientStatus.DONE : ClientStatus.WRITING);
+
+    }
+
+    private void putResponseToQueue(String token, Queue<Object> queue) {
+        byte[] bytesOut = token.getBytes(StandardCharsets.UTF_8);
+        for (int pos = 0; pos < bytesOut.length;) {
+            int rem = bytesOut.length - pos;
+            int cutSize = Math.min(BUF_SIZE, rem);
+            byte[] dataOut = new byte[cutSize];
+            System.arraycopy(bytesOut, pos, dataOut,0, cutSize);
+            queue.offer(dataOut);
+            pos += cutSize;
+        }
     }
 
     private BufferedReader getReader(InputStream is) {
@@ -158,6 +221,26 @@ public class NIOEchoServer {
     private void handleError(Exception e) {
         System.out.println("Error!");
         e.printStackTrace();
+    }
+
+    private Queue<Object> getQueue(SocketAddress addr) {
+        String key = addr.toString();
+        return appData.computeIfAbsent(key, x -> new ArrayDeque<>());
+    }
+
+    private static enum ClientStatus {
+        WRITING,
+        DONE;
+    }
+
+    private void updateStatus(SocketAddress addr, ClientStatus status) {
+        String key = addr.toString();
+        clientStatusMap.put(key, status);
+    }
+
+    private ClientStatus getStatus(SocketAddress addr) {
+        String key = addr.toString();
+        return clientStatusMap.get(key);
     }
 
 }
