@@ -53,7 +53,7 @@ public class NIOEchoClient implements Runnable {
             client.sendMessage("111");
             client.sendMessage("abcde12345");
             System.out.println("Main: sleep 2000");
-            Thread.sleep(2000);
+            Thread.sleep(4000);
             client.stop();
         } catch (Exception e) {
             e.printStackTrace();
@@ -115,39 +115,17 @@ public class NIOEchoClient implements Runnable {
             while (!stopped) {
 
                 repeat++;
-                if (repeat == 50) {
+                if (repeat == 5000) {
                     break;
                 }
-                System.out.println("\nXXX LOOP 000: " + myKey.interestOps());
 
-                /**
-                 System.out.println("\nChecking queue..");
-                 if (queue.peek() == null) {
-                 System.out.println("\nWait for a while..");
-                 lock.lock();
-                 try {
-                 notEmpty.await();
-                 } finally {
-                 lock.unlock();
-                 }
-                 }
-                 **/
                 if (ch.isConnected() && queue.peek() != null) {
                     myKey.interestOps(SelectionKey.OP_WRITE);
                 }
 
                 System.out.println("\nCalling select()");
-                //selector.select();
 
-
-                int count = selector.select(1000);
-                if (count == 0) {
-                    System.out.println("XXX count = 0");
-                    //int x = ch.read(buf);
-                    //System.out.println("XXXX x = " + x);
-                    //continue;
-                }
-
+                selector.select(1000);
                 Set<SelectionKey> keys = selector.selectedKeys();
                 Iterator iter = keys.iterator();
                 while (iter.hasNext()) {
@@ -160,16 +138,15 @@ public class NIOEchoClient implements Runnable {
                         System.out.println("  Calling handleConnectable()");
                         handleConnetable(key);
                     }
+                    if (key.isWritable()) {
+                        System.out.println("  Calling handleWritable()");
+                        handleWritable(key);
+                    }
                     if (key.isReadable()) {
                         System.out.println("  Calling handleReadable()");
                         handleReadable(key);
                     }
-                    if (key.isValid() && key.isWritable()) {
-                        System.out.println("  Calling handleWritable()");
-                        handleWritable(key);
-                    }
                 }
-                System.out.println("End of LOOP");
             }
             System.out.println("Stopped!");
             // } catch (IOException | InterruptedException e) {
@@ -204,11 +181,16 @@ public class NIOEchoClient implements Runnable {
             System.out.println("  read: reading from ch..");
 
             int count;
-            while ((count = ch.read(buf)) > 0) {
-                if (count < 0) {
-                    // closed
-                    System.out.println("  read: connection has ben closed!");
-                    ch.close();
+            while (true) {
+                count = ch.read(buf);
+                if (count <= 0) {
+                    if (count < 0) {
+                        // closed
+                        System.out.println("  read: connection has ben closed!");
+                        ch.close();
+                        return;
+                    }
+                    System.out.println("  read: no more data!");
                     return;
                 }
 
@@ -219,7 +201,6 @@ public class NIOEchoClient implements Runnable {
 
                 printMessage(bytes);
             }
-            //key.interestOps(SelectionKey.OP_WRITE);
         } catch (IOException ioe) {
             handleError(ioe);
         }

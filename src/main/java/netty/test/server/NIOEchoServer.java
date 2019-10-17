@@ -104,24 +104,33 @@ public class NIOEchoServer {
         var buf = (ByteBuffer) key.attachment();
         try {
             System.out.println("  read: reading from ch..");
-            int size = ch.read(buf);
-            if (size <= 0) {
-                if (size < 0) {
-                    // closed
-                    System.out.println("  read: connection has ben closed!");
-                    ch.close();
-                } else {
-                    System.out.println("  read: no data found.");
+            int total= 0;
+            int count;
+            //while ((count = ch.read(buf)) > 0) {
+            while (true) {
+                count= ch.read(buf);
+                if (count <= 0) {
+                    if (count < 0) {
+                        // closed
+                        System.out.println("  read: connection has ben closed!");
+                        ch.close();
+                        return;
+                    }
+                    System.out.println("  read: no more data!");
+                    if (total > 0) {
+                        key.interestOps(SelectionKey.OP_WRITE);
+                    }
+                    return;
                 }
-                return;
-            }
-            System.out.println("  read: size = " + size);
-            var bytes = new byte[size];
-            buf.flip().get(bytes);
-            buf.clear();
 
-            processMessage(bytes, ch.getRemoteAddress());
-            key.interestOps(SelectionKey.OP_WRITE);
+                System.out.println("  read: size = " + count);
+                var bytes = new byte[count];
+                buf.flip().get(bytes);
+                buf.clear();
+
+                processMessage(bytes, ch.getRemoteAddress());
+                 total += count;
+            }
         } catch (IOException ioe) {
             handleError(ioe);
         }
@@ -182,13 +191,13 @@ public class NIOEchoServer {
         System.out.println("  pm: endWithNewLine=" + endWithNewline);
 
         String[] tokens = s.split("\n");
-        for (int i=0; i<tokens.length; i++) {
+        for (int i = 0; i < tokens.length; i++) {
 
             String token = tokens[i];
             if (token.isEmpty()) {
                 continue;
             }
-            if (i < tokens.length  -1 || endWithNewline) {
+            if (i < tokens.length - 1 || endWithNewline) {
                 token = token + " is nio!\n";
             }
             System.out.println("  pm: token=" + token);
@@ -200,11 +209,11 @@ public class NIOEchoServer {
 
     private void putResponseToQueue(String token, Queue<Object> queue) {
         byte[] bytesOut = token.getBytes(StandardCharsets.UTF_8);
-        for (int pos = 0; pos < bytesOut.length;) {
+        for (int pos = 0; pos < bytesOut.length; ) {
             int rem = bytesOut.length - pos;
             int cutSize = Math.min(BUF_SIZE, rem);
             byte[] dataOut = new byte[cutSize];
-            System.arraycopy(bytesOut, pos, dataOut,0, cutSize);
+            System.arraycopy(bytesOut, pos, dataOut, 0, cutSize);
             queue.offer(dataOut);
             pos += cutSize;
         }
