@@ -12,9 +12,6 @@ import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class NIOEchoClient implements Runnable {
 
@@ -26,20 +23,6 @@ public class NIOEchoClient implements Runnable {
     private Queue<Object> queue = new ArrayDeque<>();
     private SocketAddress addr;
     private StringBuilder sb;
-
-    private Lock lock = new ReentrantLock();
-
-    private Condition notEmpty = lock.newCondition();
-
-    public static void mainXX(String[] args) {
-        //String a = "abcXdefX";
-        String a = "abc";
-        String[] ss = a.split("X");
-        System.out.println("ss.length=" + ss.length);
-        for (String s : ss) {
-            System.out.println("s: " + s);
-        }
-    }
 
     public static void main(String[] args) {
         try {
@@ -70,32 +53,24 @@ public class NIOEchoClient implements Runnable {
         stopped = true;
     }
 
-    private int putCount = 0;
-
     public void sendMessage(String m) {
-        lock.lock();
-        try {
-            String m1 = m + "\n";
-            byte[] bytesOut = m1.getBytes(StandardCharsets.UTF_8);
-            System.out.println("XXX length = " + bytesOut.length);
-            for (int pos = 0; pos < bytesOut.length; ) {
-                System.out.println("XXXXX pos = " + pos);
-                int rem = bytesOut.length - pos;
-                int cutSize = Math.min(BUF_SIZE, rem);
-                byte[] dataOut = new byte[cutSize];
-                System.arraycopy(bytesOut, pos, dataOut, 0, cutSize);
-                putCount++;
-                System.out.println("SM: putCount=" + putCount);
-                boolean added = queue.offer(dataOut);
-                if (!added) {
-                    System.out.println("  Failed to put msg to Q!");
-                }
-                pos += cutSize;
+
+        String m1 = m + "\n";
+        byte[] bytesOut = m1.getBytes(StandardCharsets.UTF_8);
+        for (int pos = 0; pos < bytesOut.length; ) {
+
+            int rem = bytesOut.length - pos;
+            int cutSize = Math.min(BUF_SIZE, rem);
+            byte[] dataOut = new byte[cutSize];
+            System.arraycopy(bytesOut, pos, dataOut, 0, cutSize);
+
+            boolean added = queue.offer(dataOut);
+            if (!added) {
+                System.out.println("  Failed to put msg to Q!");
             }
-            notEmpty.signal();
-        } finally {
-            lock.unlock();
+            pos += cutSize;
         }
+
     }
 
     private int repeat = 0;
@@ -149,7 +124,6 @@ public class NIOEchoClient implements Runnable {
                 }
             }
             System.out.println("Stopped!");
-            // } catch (IOException | InterruptedException e) {
         } catch (Exception e) {
             handleError(e);
         } finally {
@@ -206,8 +180,6 @@ public class NIOEchoClient implements Runnable {
         }
     }
 
-    private int getCount = 0;
-
     private void handleWritable(SelectionKey key) {
         var ch = (SocketChannel) key.channel();
         try {
@@ -219,11 +191,8 @@ public class NIOEchoClient implements Runnable {
                         // No data
                         System.out.println("  write: no data found");
                         key.interestOps(SelectionKey.OP_READ);
-                        //System.out.println("XXXX key: " + key.interestOps());
                         return;
                     }
-                    getCount++;
-                    System.out.println("  write: getCount=" + getCount);
                     buf.put(dataOut);
                 }
                 buf.flip();
@@ -246,8 +215,6 @@ public class NIOEchoClient implements Runnable {
         }
     }
 
-
-
     private void printMessage(byte[] data) {
         String s = new String(data, StandardCharsets.UTF_8);
         System.out.println("  pm: Receieved: " + s);
@@ -260,9 +227,7 @@ public class NIOEchoClient implements Runnable {
         }
 
         String[] ss = s.split("\n");
-        System.out.println("  pm: ss.length=" + ss.length);
-        for (int i=0; i<ss.length; i++) {
-            System.out.println("  pm: " + i + ", "  + ss[i]);
+        for (int i = 0; i < ss.length; i++) {
             if (i == ss.length - 1) {
                 if (s.endsWith("\n")) {
                     sb.append(ss[i]);

@@ -25,7 +25,7 @@ import java.util.Set;
 
 public class NIOEchoServer {
 
-    private static final int BUF_SIZE = 10;
+    private static final int BUF_SIZE = 100;
 
     private final Map<String, ArrayDeque<Object>> appData = new HashMap<>();
     private final Map<String, ClientStatus> clientStatusMap = new HashMap<>();
@@ -51,25 +51,27 @@ public class NIOEchoServer {
             var selector = Selector.open();
             final var key_a = channel.register(selector, SelectionKey.OP_ACCEPT);
             while (true) {
-                System.out.println("\nCalling select()");
+                //System.out.println("\nCalling select()");
                 selector.select();
                 Set<SelectionKey> keys = selector.selectedKeys();
                 Iterator iter = keys.iterator();
                 while (iter.hasNext()) {
                     SelectionKey key = (SelectionKey) iter.next();
                     iter.remove();
-                    System.out.println("  key: " + key.interestOps() + ", " + key.readyOps());
+
+                    //System.out.println("  key: " + key.interestOps() + ", " + key.readyOps());
                     if (key.isAcceptable()) {
-                        System.out.println("  Calling handleAcceptable()");
+                        //System.out.println("  Calling handleAcceptable()");
                         handleAcceptable(key, selector);
-                    }
-                    if (key.isReadable()) {
-                        System.out.println("  Calling handleReadable()");
-                        handleReadable(key);
-                    }
-                    if (key.isValid() && key.isWritable()) {
-                        System.out.println("  Calling handleWritable()");
-                        handleWritable(key);
+                    } else {
+                        if (key.isReadable()) {
+                            //System.out.println("  Calling handleReadable()");
+                            handleReadable(key);
+                        }
+                        if (key.isValid() && key.isWritable()) {
+                            //System.out.println("  Calling handleWritable()");
+                            handleWritable(key);
+                        }
                     }
                 }
             }
@@ -103,33 +105,33 @@ public class NIOEchoServer {
         var ch = (SocketChannel) key.channel();
         var buf = (ByteBuffer) key.attachment();
         try {
-            System.out.println("  read: reading from ch..");
-            int total= 0;
+           // System.out.println("  read: reading from ch..");
+            int total = 0;
             int count;
-            //while ((count = ch.read(buf)) > 0) {
+
             while (true) {
-                count= ch.read(buf);
+                count = ch.read(buf);
                 if (count <= 0) {
                     if (count < 0) {
                         // closed
-                        System.out.println("  read: connection has ben closed!");
+                        System.out.println("  read: connection has been closed!");
                         ch.close();
                         return;
                     }
-                    System.out.println("  read: no more data!");
+                    //System.out.println("  read: no more data!");
                     if (total > 0) {
                         key.interestOps(SelectionKey.OP_WRITE);
                     }
                     return;
                 }
 
-                System.out.println("  read: size = " + count);
+                //System.out.println("  read: size = " + count);
                 var bytes = new byte[count];
                 buf.flip().get(bytes);
                 buf.clear();
 
                 processMessage(bytes, ch.getRemoteAddress());
-                 total += count;
+                total += count;
             }
         } catch (IOException ioe) {
             handleError(ioe);
@@ -139,25 +141,24 @@ public class NIOEchoServer {
     private void handleWritable(SelectionKey key) {
         var ch = (SocketChannel) key.channel();
         var buf = ((ByteBuffer) key.attachment());
-
         try {
+            var queue = appData.get(ch.getRemoteAddress().toString());
 
             while (true) {
                 if (buf.position() == 0) {
-                    var queue = appData.get(ch.getRemoteAddress().toString());
                     byte[] dataOut = (byte[]) queue.poll();
                     if (dataOut == null) {
                         // No data
                         key.interestOps(SelectionKey.OP_READ);
                         return;
                     }
-
+                    
                     buf.put(dataOut);
                 }
                 buf.flip();
-                System.out.println("  write: writing to ch..");
+                //System.out.println("  write: writing to ch..");
                 int writeCount = ch.write(buf);
-                System.out.println("  write: writeCount=" + writeCount);
+                //System.out.println("  write: writeCount=" + writeCount);
                 buf.compact();
                 if (buf.position() > 0) {
                     // Data is remaining in buf.
@@ -166,7 +167,6 @@ public class NIOEchoServer {
                     return;
                 } else {
                     buf.clear();
-                    //key.interestOps(SelectionKey.OP_READ);
                 }
             }
         } catch (IOException ioe) {
@@ -178,17 +178,16 @@ public class NIOEchoServer {
         Queue<Object> queue = getQueue(addr);
         ClientStatus clientStatus = getStatus(addr);
         String s = new String(bytesIn, StandardCharsets.UTF_8);
-        System.out.println("  Processing data: " + s + ", " + clientStatus);
+        //System.out.println("  Processing data: " + s + ", " + clientStatus);
 
         if (s.equals("\n") && clientStatus == ClientStatus.WRITING) {
-            System.out.println("XXXXX only newline!");
             putResponseToQueue(" is nio!\n", queue);
             updateStatus(addr, ClientStatus.DONE);
             return;
         }
 
         boolean endWithNewline = s.endsWith("\n");
-        System.out.println("  pm: endWithNewLine=" + endWithNewline);
+       // System.out.println("  pm: endWithNewLine=" + endWithNewline);
 
         String[] tokens = s.split("\n");
         for (int i = 0; i < tokens.length; i++) {
@@ -200,7 +199,7 @@ public class NIOEchoServer {
             if (i < tokens.length - 1 || endWithNewline) {
                 token = token + " is nio!\n";
             }
-            System.out.println("  pm: token=" + token);
+            //System.out.println("  pm: token=" + token);
             putResponseToQueue(token, queue);
         }
         updateStatus(addr, endWithNewline ? ClientStatus.DONE : ClientStatus.WRITING);
@@ -237,7 +236,7 @@ public class NIOEchoServer {
         return appData.computeIfAbsent(key, x -> new ArrayDeque<>());
     }
 
-    private static enum ClientStatus {
+    private enum ClientStatus {
         WRITING,
         DONE;
     }

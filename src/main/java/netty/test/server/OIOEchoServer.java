@@ -36,9 +36,9 @@ public class OIOEchoServer {
                         var writer = getWriter(s.getOutputStream());
                         String line;
                         while ((line = reader.readLine()) != null) {
-                            System.out.println("Threads: " + Thread.activeCount());
-                            System.out.println("read: " + line);
-                            writer.println(line + " is cool");
+                            //System.out.println("Threads: " + Thread.activeCount());
+                            //System.out.println("read: " + line);
+                            writer.println(line + " is oio!");
                             writer.flush();
                         }
                     } catch (IOException ioe) {
