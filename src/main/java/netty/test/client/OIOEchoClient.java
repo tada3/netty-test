@@ -136,6 +136,8 @@ public class OIOEchoClient implements Runnable {
                     Thread.sleep(INTERVAL_1);
                 }
 
+                socket.close();
+
                 Util.print("Take a nap!");
                 Thread.sleep(INTERVAL_2);
                 iteration++;
