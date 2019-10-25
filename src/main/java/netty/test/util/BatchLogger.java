@@ -25,9 +25,9 @@ public class BatchLogger {
                     if (e == FIN) {
                         break;
                     }
-                    long tp = agg.add(e);
+                    double tp = agg.add(e);
                     if (tp >= 0) {
-                        Util.print("TP: %d", tp);
+                        Util.print("TP: %.2f", tp);
                     }
                 } catch (Exception e) {
                     Util.handleError(e);
@@ -79,13 +79,13 @@ public class BatchLogger {
 
     public static class LogAggregator {
         //private static final long THRESHOLD = 100000;
-        private static final long THRESHOLD = 1000;
+        private static final double THRESHOLD = 1000;
 
         private long start = Long.MAX_VALUE;
         private long end = 0;
-        private long total = 0;
+        private double total = 0;
 
-        public long add(LogEvent e) {
+        public double add(LogEvent e) {
 
             if (e.from < start) {
                 start = e.from;
@@ -110,8 +110,8 @@ public class BatchLogger {
         }
 
         // query / sec
-        private long getThroughputAndReset() {
-            long tp = total / ((end - start) / 1000L);
+        private double getThroughputAndReset() {
+            double tp = 1000 * total / (end - start);
             reset();
             return tp;
         }
