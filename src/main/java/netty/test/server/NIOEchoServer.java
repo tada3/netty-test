@@ -23,6 +23,8 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 
+import netty.test.util.Util;
+
 public class NIOEchoServer {
 
     private static final int BUF_SIZE = 100;
@@ -52,24 +54,27 @@ public class NIOEchoServer {
             final var key_a = channel.register(selector, SelectionKey.OP_ACCEPT);
             while (true) {
                 //System.out.println("\nCalling select()");
+
                 selector.select();
                 Set<SelectionKey> keys = selector.selectedKeys();
+                Util.print("keys.size=%d", keys.size());
                 Iterator iter = keys.iterator();
                 while (iter.hasNext()) {
                     SelectionKey key = (SelectionKey) iter.next();
                     iter.remove();
+                    Util.print("key.isValid=%b", key.isValid());
 
                     //System.out.println("  key: " + key.interestOps() + ", " + key.readyOps());
                     if (key.isAcceptable()) {
-                        //System.out.println("  Calling handleAcceptable()");
+                        System.out.println("  Calling handleAcceptable()");
                         handleAcceptable(key, selector);
                     } else {
                         if (key.isReadable()) {
-                            //System.out.println("  Calling handleReadable()");
+                            System.out.println("  Calling handleReadable()");
                             handleReadable(key);
                         }
                         if (key.isValid() && key.isWritable()) {
-                            //System.out.println("  Calling handleWritable()");
+                            System.out.println("  Calling handleWritable()");
                             handleWritable(key);
                         }
                     }
@@ -152,7 +157,7 @@ public class NIOEchoServer {
                         key.interestOps(SelectionKey.OP_READ);
                         return;
                     }
-                    
+
                     buf.put(dataOut);
                 }
                 buf.flip();

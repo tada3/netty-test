@@ -19,6 +19,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import netty.test.util.Util;
+
 public class NIOSequentialEchoClient implements Runnable {
 
     private static final int BUF_SIZE = 10;
@@ -35,11 +37,15 @@ public class NIOSequentialEchoClient implements Runnable {
     private long processedQuery;
     private int id;
 
+    /**
+     * Usage: cmd <host> <port> <max_requests> <test_period> <num_of_clients>
+     * @param args
+     */
     public static void main(String[] args) {
         String host = "localhost";
         int port = 9090;
-        int maxRequests = 0;
-        long testPeriod = 3 * 1000;
+        int maxRequests = 10;
+        long testPeriod = 3 * 100000;
         int numOfClient = 3;
 
         if (args.length > 0) {
@@ -50,6 +56,7 @@ public class NIOSequentialEchoClient implements Runnable {
         }
         if (args.length > 2) {
             maxRequests = Integer.parseInt(args[2]);
+            Util.print("maxRequests=%d", maxRequests);
         }
         if (args.length > 3) {
             testPeriod = Long.parseLong(args[3]);
@@ -65,6 +72,7 @@ public class NIOSequentialEchoClient implements Runnable {
                 System.out.println("Client " + i + " started!");
                 clients[i] = new NIOSequentialEchoClient(i, host, port, maxRequests);
                 ths[i] = new Thread(clients[i]);
+                ths[i].setName("T" + i);
             }
 
             for (int i = 0; i < numOfClient; i++) {
@@ -105,7 +113,7 @@ public class NIOSequentialEchoClient implements Runnable {
 
     public void stop() {
         System.out.println("Stopping..");
-        ds.sendQuit();
+        //ds.sendQuit();
         stopped = true;
     }
 
@@ -132,51 +140,58 @@ public class NIOSequentialEchoClient implements Runnable {
     @Override
     public void run() {
         SocketChannel ch = null;
-        try {
-            ch = SocketChannel.open();
-            ch.configureBlocking(false);
+        for (int i=0; i<10; i++) {
+            Util.print("iteration: %d", i);
+            try {
+                ch = SocketChannel.open();
+                ch.configureBlocking(false);
 
-            selector = Selector.open();
-            var myKey = ch.register(selector, SelectionKey.OP_CONNECT);
-            ch.connect(addr);
-            buf = ByteBuffer.allocate(BUF_SIZE);
+                selector = Selector.open();
+                var myKey = ch.register(selector, SelectionKey.OP_CONNECT);
+                ch.connect(addr);
+                buf = ByteBuffer.allocate(BUF_SIZE);
 
-            while (!stopped) {
-                //System.out.println("\nCalling select(): " + myKey.interestOps());
+                while (!stopped) {
+                    //System.out.println("\nCalling select(): " + myKey.interestOps());
 
-                selector.select();
-                Set<SelectionKey> keys = selector.selectedKeys();
-                Iterator iter = keys.iterator();
-                while (iter.hasNext()) {
-                    SelectionKey key = (SelectionKey) iter.next();
-                    iter.remove();
+                    selector.select();
+                    Set<SelectionKey> keys = selector.selectedKeys();
+                    Iterator iter = keys.iterator();
+                    while (iter.hasNext()) {
+                        SelectionKey key = (SelectionKey) iter.next();
+                        iter.remove();
 
-                    //System.out.println("  key: " + key.interestOps() + ", " + key.readyOps());
+                        Util.print("  key: " + key.interestOps() + ", " + key.readyOps());
 
-                    if (key.isConnectable()) {
-                        //System.out.println("  Calling handleConnectable()");
-                        handleConnetable(key);
-                    }
-                    if (key.isWritable()) {
-                        //System.out.println("  Calling handleWritable()");
-                        handleWritable(key);
-                    }
-                    if (key.isValid() && key.isReadable()) {
-                        //System.out.println("  Calling handleReadable()");
-                        handleReadable(key);
+                        if (key.isConnectable()) {
+                            Util.print("  Calling handleConnectable()");
+                            handleConnetable(key);
+                        }
+                        if (key.isWritable()) {
+                            Util.print("  Calling handleWritable()");
+                            handleWritable(key);
+                        }
+                        if (key.isValid() && key.isReadable()) {
+                            Util.print("  Calling handleReadable()");
+                            handleReadable(key);
+                        }
                     }
                 }
-            }
-            System.out.println("Stopped!");
-        } catch (Exception e) {
-            handleError(e);
-        } finally {
-            if (ch != null) {
-                try {
-                    ch.close();
-                } catch (IOException ioe) {
-                    handleError(ioe);
+                Util.print("Stopped!");
+                Thread.sleep(5 * 1000);
+            } catch (Exception e) {
+                handleError(e);
+            } finally {
+                if (ch != null) {
+                    try {
+                        ch.close();
+                    } catch (IOException ioe) {
+                        handleError(ioe);
+                    }
                 }
+
+                stopped = false;
+                ds.clear();
             }
         }
     }
@@ -213,6 +228,8 @@ public class NIOSequentialEchoClient implements Runnable {
                     //System.out.println("  read: no more data!");
                     if (readSomething) {
                         ds.requestMessage(false);
+                        // Do some work
+                        Thread.sleep(10);
                         key.interestOps(SelectionKey.OP_WRITE);
                     }
                     return;
@@ -227,8 +244,8 @@ public class NIOSequentialEchoClient implements Runnable {
                 processedQuery += finished;
                 readSomething = true;
             }
-        } catch (IOException ioe) {
-            handleError(ioe);
+        } catch (Exception e) {
+            handleError(e);
         }
     }
 
@@ -296,7 +313,7 @@ public class NIOSequentialEchoClient implements Runnable {
             if (i == ss.length - 1) {
                 if (s.endsWith("\n")) {
                     sb.append(ss[i]);
-                    //System.out.println("res: " + sb.toString());
+                    Util.print("res: " + sb.toString());
                     sb.setLength(0);
                     count++;
                 } else {
@@ -304,7 +321,7 @@ public class NIOSequentialEchoClient implements Runnable {
                 }
             } else {
                 sb.append(ss[i]);
-                //System.out.println("res: " + sb.toString());
+                Util.print("res: " + sb.toString());
                 sb.setLength(0);
                 count++;
             }
@@ -349,8 +366,24 @@ public class NIOSequentialEchoClient implements Runnable {
             });
         }
 
+
         public void requestMessage(boolean direct) {
             if (maxMsgs > 0 && count >= maxMsgs) {
+                Util.print("No more msgs!");
+                sendQuit();
+                return;
+            }
+
+            String msg = genString();
+            //System.out.println("msg: " + msg);
+
+            sendMessage(msg);
+            count++;
+        }
+
+        public void requestMessage2(boolean direct) {
+            if (maxMsgs > 0 && count >= maxMsgs) {
+                Util.print("No more msgs!");
                 sendQuit();
                 return;
             }
@@ -401,6 +434,12 @@ public class NIOSequentialEchoClient implements Runnable {
             if (!added) {
                 throw new IllegalStateException("Failed to put msg to Q!");
             }
+        }
+
+        public void clear() {
+            this.count = 0;
+            internalQueue.clear();
+            queue.clear();
         }
     }
 
