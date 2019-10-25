@@ -138,6 +138,7 @@ public class OIOEchoClient implements Runnable {
 
                 Util.print("Take a nap!");
                 Thread.sleep(INTERVAL_2);
+                iteration++;
             }
             Util.print("Stopped.");
         } catch (Exception e) {
