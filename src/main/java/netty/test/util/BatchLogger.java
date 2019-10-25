@@ -78,7 +78,8 @@ public class BatchLogger {
     }
 
     public static class LogAggregator {
-        private static final long THRESHOLD = 100000;
+        //private static final long THRESHOLD = 100000;
+        private static final long THRESHOLD = 10000;
 
         private long start = Long.MAX_VALUE;
         private long end = 0;
@@ -94,7 +95,7 @@ public class BatchLogger {
             }
             total += e.count;
 
-            if (total > THRESHOLD) {
+            if (total >= THRESHOLD) {
                 return getThroughputAndReset();
             }
             return -1;

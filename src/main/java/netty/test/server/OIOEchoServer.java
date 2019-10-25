@@ -65,12 +65,9 @@ public class OIOEchoServer {
         try {
             serverSocket = new ServerSocket(port);
             while (!stopped) {
-                Util.print("WWWW");
                 Socket s = serverSocket.accept();
-                Util.print("XXX");
                 es.submit(() -> {
                     try {
-                        Util.print("AAAAAAA");
                         var reader = getReader(s.getInputStream());
                         var writer = getWriter(s.getOutputStream());
                         long t1 = System.currentTimeMillis();
@@ -84,7 +81,6 @@ public class OIOEchoServer {
                             count++;
                         }
                         logger.log(t1, count);
-                        Util.print("BBBBBBBBB");
                     } catch (Exception ioe) {
                         System.out.println("Errro1!");
                         ioe.printStackTrace();
