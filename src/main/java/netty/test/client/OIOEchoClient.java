@@ -39,14 +39,14 @@ public class OIOEchoClient implements Runnable {
     private int repeatCount;
 
     /**
-     * Usage: cmd <host> <port> <repeat_count> <test_period> <num_of_clients>
+     * Usage: cmd <host> <port> <repeat_count> <test_period (sec)> <num_of_clients>
      * @param args
      */
     public static void main(String[] args) {
         String host = "localhost";
         int port = 9090;
         int repeatCount = 10;
-        long testPeriod = 10 * 1000;
+        long testPeriod = 10 * 1000L;
         int numOfClient = 3;
 
         if (args.length > 0) {
@@ -60,7 +60,7 @@ public class OIOEchoClient implements Runnable {
             Util.print("maxRequests=%d", repeatCount);
         }
         if (args.length > 3) {
-            testPeriod = Long.parseLong(args[3]);
+            testPeriod = Long.parseLong(args[3]) * 1000L;
         }
         if (args.length > 4) {
             numOfClient = Integer.parseInt(args[4]);
@@ -114,6 +114,9 @@ public class OIOEchoClient implements Runnable {
     public void run() {
         int iteration = 0;
         try {
+            long waitTime = ds.getWaitTime();
+            Thread.sleep(waitTime);
+
             while (!stopped) {
                 Util.print("iteration: %d", iteration);
                 Socket socket = new Socket(host, port);
@@ -159,6 +162,10 @@ public class OIOEchoClient implements Runnable {
         public String getMessage() {
             int wordIdx = rnd.nextInt(words.length);
             return words[wordIdx] + "-" + rnd.nextInt();
+        }
+
+        public long getWaitTime() {
+            return rnd.nextInt((int) INTERVAL_2);
         }
     }
 
